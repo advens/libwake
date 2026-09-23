@@ -1,0 +1,9 @@
+prefix=@PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: wake
+Description: Portable C library for a distributed detection mesh
+Version: @VERSION@
+Libs: -L${libdir} -Wl,-rpath,${libdir} -lwake
+Cflags: -I${includedir}
