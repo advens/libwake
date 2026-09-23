@@ -48,14 +48,17 @@ endif
 OS := $(shell uname -s)
 ifeq ($(OS),FreeBSD)
     LDFLAGS :=
+    PCDIR := $(PREFIX)/libdata/pkgconfig
 else ifeq ($(OS),Darwin)
     LDFLAGS :=
+    PCDIR := $(PREFIX)/lib/pkgconfig
 else
     LDFLAGS := -lm
     # glibc gates POSIX.1-2008 APIs (clock_gettime, ftruncate, CLOCK_REALTIME)
     # behind a feature-test macro under strict -std=c11; FreeBSD and macOS
     # expose them unconditionally.
     CFLAGS += -D_POSIX_C_SOURCE=200809L
+    PCDIR := $(PREFIX)/lib/pkgconfig
 endif
 
 # Release by default
@@ -335,13 +338,13 @@ install: $(BUILDDIR)/$(SOFILE) $(BUILDDIR)/libwake.a wake.pc
 	@echo "  INSTALL  $(DESTDIR)$(PREFIX)"
 	$(Q)install -d $(DESTDIR)$(PREFIX)/lib
 	$(Q)install -d $(DESTDIR)$(PREFIX)/include/wake
-	$(Q)install -d $(DESTDIR)$(PREFIX)/libdata/pkgconfig
+	$(Q)install -d $(DESTDIR)$(PCDIR)
 	$(Q)install -m 0755 $(BUILDDIR)/$(SOFILE) $(DESTDIR)$(PREFIX)/lib/
 	$(Q)ln -sf $(SOFILE) $(DESTDIR)$(PREFIX)/lib/$(SONAME)
 	$(Q)ln -sf $(SOFILE) $(DESTDIR)$(PREFIX)/lib/libwake.so
 	$(Q)install -m 0644 $(BUILDDIR)/libwake.a $(DESTDIR)$(PREFIX)/lib/
 	$(Q)install -m 0644 $(HEADERS) $(DESTDIR)$(PREFIX)/include/wake/
-	$(Q)install -m 0644 wake.pc $(DESTDIR)$(PREFIX)/libdata/pkgconfig/
+	$(Q)install -m 0644 wake.pc $(DESTDIR)$(PCDIR)/
 
 clean:
 	@echo "  CLEAN"
