@@ -85,8 +85,8 @@ esac
 
 printf '%s\n' "$msg" | grep -qx 'Why:' || fail "missing Why: section"
 printf '%s\n' "$msg" | grep -qx 'Proof:' || fail "missing Proof: section"
-printf '%s\n' "$msg" | grep -Eq '^Contract: (none|abi|wire)$' || \
-    fail "missing or invalid Contract: line (none|abi|wire)"
+printf '%s\n' "$msg" | grep -Eq '^Contract: (none|abi|format|wire)$' || \
+    fail "missing or invalid Contract: line (none|abi|format|wire)"
 
 # Why: must be followed by a non-empty line that is not another header.
 why_next=$(printf '%s\n' "$msg" | awk 'BEGIN{h=0} /^Why:$/{h=1; next} h==1{print; exit}')

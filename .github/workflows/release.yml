@@ -25,7 +25,7 @@ jobs:
           git archive --format=tar.gz --prefix="libwake-${v}/" -o "libwake-${v}.tar.gz" "${GITHUB_REF_NAME}"
           sha256sum "libwake-${v}.tar.gz" > "libwake-${v}.tar.gz.sha256"
 
-      - name: notes
+      - name: changelog section
         run: |
           v="${GITHUB_REF_NAME}"
           if [ -f CHANGELOG.md ]; then
@@ -35,17 +35,12 @@ jobs:
               p {print}
             ' CHANGELOG.md > RELEASE_NOTES.md
           fi
-          if [ ! -s RELEASE_NOTES.md ]; then
-            printf 'libwake %s\n' "$v" > RELEASE_NOTES.md
-          fi
+          test -s RELEASE_NOTES.md || echo "See CHANGELOG.md." > RELEASE_NOTES.md
 
       - name: publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          v="${GITHUB_REF_NAME}"
-          gh release create "$v" \
-            "libwake-${v}.tar.gz" \
-            "libwake-${v}.tar.gz.sha256" \
-            --title "$v" \
-            --notes-file RELEASE_NOTES.md
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            libwake-*.tar.gz
+            libwake-*.tar.gz.sha256

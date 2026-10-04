@@ -43,8 +43,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - name: deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang
       - name: make test
         run: make test
+      - name: native vs scalar
+        run: make libfuzz-ci
 
   test-macos:
     runs-on: macos-latest
@@ -52,3 +56,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: make test
         run: make test
+
+  san:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make  san
+        run: make san
+
+  tsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make tsan
+        run: make tsan
+
+  diffuzz-arch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang
+      - name: native vs scalar
+        run: make libfuzz-ci
