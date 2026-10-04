@@ -13,7 +13,10 @@ host application's own socket, loop, and clock.
 - **wake_dgram**: the datagram codec for the two protocols above, bounded,
   fuzzed, safe on untrusted peer input.
 - **wake_pheromone**: an mmap-backed, multi-process shared table for
-  stigmergic confidence accumulation and decay.
+  stigmergic confidence accumulation and decay. A claim keeps up to
+  three packed reason words (`wake_reason_pack`,
+  `wake_pheromone_note_reason`). The file version stays 1, so an older
+  file reads as no reasons.
 - **wake_quorum**: threshold-based signal emission over a pheromone table
   (observe / alert / retract tiers).
 - **wake_tac**: a bounded, lock-free table for transient cross-entity
@@ -60,15 +63,23 @@ int main(void)
         wake_pheromone_deposit(pt, &src, WAKE_ACTION_AUTH, WAKE_OUTCOME_FAILURE,
                                 /*tenant_id=*/1, /*confidence_delta=*/2000, 0);
 
+    /* Slot 0 is the latest of three. Zero is an empty reason. */
+    wake_pheromone_note_reason(pt, &src,
+        wake_reason_pack(WAKE_REASON_SCAN, 0, 60, 0));
+
     wake_quorum_hit_t hits[8];
     uint32_t n = 0;
     wake_quorum_sweep_collect(q, pt, hits, 8, &n);
     for (uint32_t i = 0; i < n; i++) {
         char buf[80];
+        char why[64];
+        uint64_t word = hits[i].entry.reasons[0];
         wake_entity_format(&hits[i].entry.entity, buf, sizeof(buf));
         printf("%s: %s (confidence=%u)\n",
                wake_quorum_action_name(hits[i].action), buf,
                hits[i].entry.confidence);
+        if (wake_reason_format(word, why, sizeof(why)) > 0)
+            printf("  %s\n", why);
     }
 
     wake_quorum_destroy(q);
@@ -91,12 +102,12 @@ state machines from a real socket is the host application's job: see
 ## Build
 
 ```
-make -f Makefile.port                # shared + static library
-make -f Makefile.port test           # every unit test, built against the library
-make -f Makefile.port san            # ASan + UBSan
-make -f Makefile.port tsan           # wake_tac and wake_pheromone under ThreadSanitizer
-make -f Makefile.port libfuzz-ci     # short bounded libFuzzer run per untrusted surface
-make -f Makefile.port PREFIX=/usr/local install
+make                                 # shared + static library
+make test                            # every unit test, built against the library
+make san                             # ASan + UBSan
+make tsan                            # wake_tac and wake_pheromone under ThreadSanitizer
+make libfuzz-ci                      # short bounded libFuzzer run per untrusted surface
+make PREFIX=/usr/local install
 ```
 
 `pkg-config --cflags --libs wake` after install.
@@ -146,7 +157,7 @@ Every module that parses bytes from outside the process (a peer datagram,
 a signed signal, a pheromone or TAC table file opened from disk) has a
 libFuzzer target under `src/fuzz_*.c`, run under AddressSanitizer and
 UBSan. `wake_tac` and `wake_pheromone` additionally run under
-ThreadSanitizer (`make -f Makefile.port tsan`) since both are mmap-backed
+ThreadSanitizer (`make tsan`) since both are mmap-backed
 structures shared across processes.
 
 Report a vulnerability privately to the maintainer rather than opening a

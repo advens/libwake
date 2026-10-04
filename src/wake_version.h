@@ -2,7 +2,7 @@
  * wake_version.h: libwake release version
  *
  * MAJOR/MINOR/PATCH mirror the SONAME-driving LIB_MAJOR/LIB_MINOR/LIB_PATCH
- * variables in Makefile.port; the build's libwake.so.$(LIB_MAJOR) versioning
+ * variables in the Makefile; the build's libwake.so.$(LIB_MAJOR) versioning
  * and this header are two views of the same number and must be bumped
  * together. There is no generation step tying them automatically; this
  * comment is the enforcement until one exists.
