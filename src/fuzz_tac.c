@@ -7,7 +7,7 @@
  * from the rest. Must not crash, leak maps, or insert uncapped.
  *
  * libFuzzer smoke on untrusted byte surfaces. Bounded in
- * Makefile.port libfuzz-ci (-max_total_time=15).
+ * Makefile libfuzz-ci (-max_total_time=15).
  *
  * Copyright (c) 2026 Advens. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
