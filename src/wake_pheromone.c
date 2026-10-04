@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -176,6 +177,11 @@ pht_insert(wake_pheromone_t *pt,
 
     /* Release seqlock: next even version */
     atomic_store_explicit(&e->version, write_ver + 1, memory_order_release);
+
+    /* A recycled tombstone must not keep the previous entity's reasons. */
+    atomic_store_explicit(&e->reasons[0], 0, memory_order_relaxed);
+    atomic_store_explicit(&e->reasons[1], 0, memory_order_relaxed);
+    atomic_store_explicit(&e->reasons[2], 0, memory_order_relaxed);
 
     /* Set initial atomic fields (after seqlock, as these are independent) */
     atomic_store_explicit(&e->confidence, confidence_delta,
@@ -369,6 +375,155 @@ wake_pheromone_close(wake_pheromone_t *pt)
  * Hot-path operations
  * ========================================================================= */
 
+uint64_t
+wake_reason_pack(uint8_t kind, uint8_t code, uint16_t magnitude, uint32_t extra)
+{
+    return (uint64_t)kind
+        | ((uint64_t)code << 8)
+        | ((uint64_t)magnitude << 16)
+        | ((uint64_t)extra << 32);
+}
+
+static void
+reason_unpack(uint64_t word, uint8_t *kind, uint8_t *code,
+              uint16_t *magnitude, uint32_t *extra)
+{
+    *kind = (uint8_t)(word & 0xffu);
+    *code = (uint8_t)((word >> 8) & 0xffu);
+    *magnitude = (uint16_t)((word >> 16) & 0xffffu);
+    *extra = (uint32_t)(word >> 32);
+}
+
+int
+wake_reason_format(uint64_t word, char *buf, size_t cap)
+{
+    static const char *const class_name[] = {
+        "classifier",
+        "new entity",
+        "temporal",
+        "velocity",
+        "icmp tunnel",
+        "cross category",
+        "credential pivot",
+        "slow scan",
+        "destination",
+        "lateral movement",
+        "dns tunnel",
+        "data staging",
+        "attack chain",
+        "geo travel",
+        "sequence",
+        "beaconing",
+        "role incongruence",
+    };
+    uint8_t kind, code;
+    uint16_t magnitude;
+    uint32_t extra;
+    int n;
+    const char *cname;
+
+    if (buf == NULL || cap == 0)
+        return -1;
+    reason_unpack(word, &kind, &code, &magnitude, &extra);
+    if (kind == WAKE_REASON_NONE)
+        return -1;
+
+    switch (kind) {
+    case WAKE_REASON_SCAN:
+        n = snprintf(buf, cap, "scan %.1fx baseline", (double)magnitude / 10.0);
+        break;
+    case WAKE_REASON_BRUTE:
+        n = snprintf(buf, cap, "brute %.1fx baseline", (double)magnitude / 10.0);
+        break;
+    case WAKE_REASON_EXFIL:
+        n = snprintf(buf, cap, "exfil %.1fx baseline", (double)magnitude / 10.0);
+        break;
+    case WAKE_REASON_C2:
+        n = snprintf(buf, cap, "c2 %.1fx baseline", (double)magnitude / 10.0);
+        break;
+    case WAKE_REASON_CREDENTIAL:
+        n = snprintf(buf, cap, "credential use after brute");
+        break;
+    case WAKE_REASON_SHELLCODE:
+        n = snprintf(buf, cap, "shellcode x%u", (unsigned)magnitude);
+        break;
+    case WAKE_REASON_EDR:
+        n = snprintf(buf, cap, "edr alert x%u", (unsigned)magnitude);
+        break;
+    case WAKE_REASON_CTI:
+        n = snprintf(buf, cap, "cti confidence %u", (unsigned)magnitude);
+        break;
+    case WAKE_REASON_IDS:
+        n = snprintf(buf, cap, "ids severity %u", (unsigned)magnitude);
+        break;
+    case WAKE_REASON_SIGMA:
+    case WAKE_REASON_SIGMA_CORR:
+        if (extra > 0) {
+            n = snprintf(buf, cap, "%s T%u",
+                         kind == WAKE_REASON_SIGMA_CORR ? "sigma correlation" : "sigma",
+                         (unsigned)extra);
+        } else {
+            n = snprintf(buf, cap, "%s match",
+                         kind == WAKE_REASON_SIGMA_CORR ? "sigma correlation" : "sigma");
+        }
+        break;
+    case WAKE_REASON_CLASSIFY:
+        cname = "classifier";
+        if (code < (uint8_t)(sizeof(class_name) / sizeof(class_name[0])))
+            cname = class_name[code];
+        n = snprintf(buf, cap, "%s", cname);
+        break;
+    default:
+        n = snprintf(buf, cap, "evidence %u", (unsigned)kind);
+        break;
+    }
+    if (n < 0 || (size_t)n >= cap)
+        return -1;
+    return n;
+}
+
+void
+wake_pheromone_note_reason(wake_pheromone_t *pt,
+                           const wake_entity_t *entity,
+                           uint64_t word)
+{
+    uint64_t key;
+    uint64_t base;
+    uint32_t probe;
+    uint8_t kind;
+
+    if (pt == NULL || entity == NULL || (word & 0xffu) == WAKE_REASON_NONE)
+        return;
+
+    key = entity_key_hash(entity);
+    base = key & pt->header->mask;
+    kind = (uint8_t)(word & 0xffu);
+
+    for (probe = 0; probe < WAKE_PHT_PROBE_MAX; probe++) {
+        uint64_t idx = (base + probe) & pt->header->mask;
+        wake_pheromone_entry_t *e = &pt->entries[idx];
+        uint64_t existing = atomic_load_explicit(&e->key_hash, memory_order_acquire);
+        uint64_t cur0;
+
+        if (existing == WAKE_PHT_SLOT_EMPTY)
+            return;
+        if (existing != key)
+            continue;
+
+        cur0 = atomic_load_explicit(&e->reasons[0], memory_order_relaxed);
+        if ((uint8_t)(cur0 & 0xffu) == kind) {
+            atomic_store_explicit(&e->reasons[0], word, memory_order_relaxed);
+            return;
+        }
+        {
+            uint64_t prev0 = atomic_exchange_explicit(&e->reasons[0], word, memory_order_relaxed);
+            uint64_t prev1 = atomic_exchange_explicit(&e->reasons[1], prev0, memory_order_relaxed);
+            atomic_store_explicit(&e->reasons[2], prev1, memory_order_relaxed);
+        }
+        return;
+    }
+}
+
 uint32_t
 wake_pheromone_deposit(wake_pheromone_t *pt,
                        const wake_entity_t *entity,
@@ -558,6 +713,15 @@ wake_pheromone_read_entry(const wake_pheromone_t *pt,
         out->tenant_id = e->tenant_id;
         out->phase_flags = atomic_load_explicit(&e->phase_flags,
                                                  memory_order_relaxed);
+        atomic_store_explicit(&out->reasons[0],
+            atomic_load_explicit(&e->reasons[0], memory_order_relaxed),
+            memory_order_relaxed);
+        atomic_store_explicit(&out->reasons[1],
+            atomic_load_explicit(&e->reasons[1], memory_order_relaxed),
+            memory_order_relaxed);
+        atomic_store_explicit(&out->reasons[2],
+            atomic_load_explicit(&e->reasons[2], memory_order_relaxed),
+            memory_order_relaxed);
         memcpy((void *)&out->entity, (const void *)&e->entity,
                sizeof(wake_entity_t));
 

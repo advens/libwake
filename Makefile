@@ -14,7 +14,7 @@ DESTDIR  ?=
 # no generation step ties them together, this comment is the enforcement.
 LIB_MAJOR := 0
 LIB_MINOR := 3
-LIB_PATCH := 0
+LIB_PATCH := 1
 
 SONAME   := libwake.so.$(LIB_MAJOR)
 SOFILE   := libwake.so.$(LIB_MAJOR).$(LIB_MINOR).$(LIB_PATCH)
@@ -196,6 +196,15 @@ test-quorum: $(BUILDDIR)/test_quorum
 	@echo "=== wake_quorum threshold + sweep tests ==="
 	$(Q)$(BUILDDIR)/test_quorum
 
+$(BUILDDIR)/test_reason: $(SRCDIR)/test_reason.c $(BUILDDIR)/libwake.a $(HEADERS) | $(BUILDDIR)
+	@echo "  CC    $< (test)"
+	$(Q)$(CC) $(CFLAGS) -o $@ $(SRCDIR)/test_reason.c $(BUILDDIR)/libwake.a $(LDFLAGS)
+
+.PHONY: test-reason
+test-reason: $(BUILDDIR)/test_reason
+	@echo "=== wake_pheromone reason slot tests ==="
+	$(Q)$(BUILDDIR)/test_reason
+
 # ThreadSanitizer gate: 1 writer (reinforce, batch, decay) vs N readers
 # (RPC read path) on one table. Built from sources, not the release lib, so the
 # whole call graph is instrumented. Same warning set as the library build
@@ -309,7 +318,7 @@ san: | $(BUILDDIR)
 		-o $(BUILDDIR)/test_quorum_san
 	$(Q)$(BUILDDIR)/test_quorum_san
 
-test: $(BUILDDIR)/$(SOFILE) $(BUILDDIR)/libwake.a test-tac test-swim test-dgram test-crypto test-entity test-quorum
+test: $(BUILDDIR)/$(SOFILE) $(BUILDDIR)/libwake.a test-tac test-swim test-dgram test-crypto test-entity test-quorum test-reason
 	@echo ""
 	@echo "=== libwake test: link check ==="
 	@echo "  Shared library: $(BUILDDIR)/$(SOFILE)"
