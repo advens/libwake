@@ -96,7 +96,9 @@ typedef struct {
     uint32_t         tenant_id;      /*  4B: tenant isolation key            */
     _Atomic uint32_t version;        /*  4B: seqlock for entity writes       */
     _Atomic uint32_t phase_flags;    /*  4B: behavioral phase bitmask        */
-    uint8_t          _pad0[24];      /* 24B: pad to 64 bytes                 */
+    /* Three newest evidence reasons, slot 0 is the latest. Each word is
+     * wake_reason_pack(). Zero is empty. Not a fourth alert channel. */
+    _Atomic uint64_t reasons[3];     /* 24B: pad to 64 bytes                 */
 
     /* === Cache line 1: cold field === */
     wake_entity_t    entity;         /* 64B: full entity (seqlock-protected) */
@@ -192,6 +194,56 @@ uint32_t wake_pheromone_deposit(wake_pheromone_t *pt,
                                 uint32_t tenant_id,
                                 uint32_t confidence_delta,
                                 uint32_t phase_flags);
+
+/* Evidence kinds stored in a reason word. The quorum record prints them.
+ * They never open an inbox row by themselves. */
+#define WAKE_REASON_NONE        0u
+#define WAKE_REASON_SCAN        1u
+#define WAKE_REASON_BRUTE       2u
+#define WAKE_REASON_EXFIL       3u
+#define WAKE_REASON_C2          4u
+#define WAKE_REASON_CTI         5u
+#define WAKE_REASON_IDS         6u
+#define WAKE_REASON_SIGMA       7u
+#define WAKE_REASON_SIGMA_CORR  8u
+#define WAKE_REASON_CLASSIFY    9u
+#define WAKE_REASON_CREDENTIAL  10u
+#define WAKE_REASON_SHELLCODE   11u
+#define WAKE_REASON_EDR         12u
+
+/* Classifier code in the low byte of a WAKE_REASON_CLASSIFY word. */
+#define WAKE_CLASS_OTHER             0u
+#define WAKE_CLASS_FIRST_SEEN        1u
+#define WAKE_CLASS_TEMPORAL          2u
+#define WAKE_CLASS_VELOCITY          3u
+#define WAKE_CLASS_ICMP_TUNNEL       4u
+#define WAKE_CLASS_CROSS_CATEGORY    5u
+#define WAKE_CLASS_CREDENTIAL_PIVOT  6u
+#define WAKE_CLASS_SLOW_SCAN         7u
+#define WAKE_CLASS_DESTINATION       8u
+#define WAKE_CLASS_LATERAL           9u
+#define WAKE_CLASS_DNS_TUNNEL        10u
+#define WAKE_CLASS_DATA_STAGING      11u
+#define WAKE_CLASS_ATTACK_CHAIN      12u
+#define WAKE_CLASS_GEO_TRAVEL        13u
+#define WAKE_CLASS_SEQUENCE          14u
+#define WAKE_CLASS_BEACONING         15u
+#define WAKE_CLASS_ROLE_INCONGRUENCE 16u
+
+#define WAKE_REASON_SLOTS 3
+
+/* Little-endian pack: kind, code, magnitude, extra. kind 0 is empty. */
+uint64_t wake_reason_pack(uint8_t kind, uint8_t code, uint16_t magnitude, uint32_t extra);
+
+/* Write one sentence into buf. Returns the length, or -1 if the word is
+ * empty or cap is too small for the sentence. */
+int wake_reason_format(uint64_t word, char *buf, size_t cap);
+
+/* Remember one reason on the entity's slot. Same kind replaces slot 0.
+ * A new kind shifts the older two down. No-op if the entity has no slot. */
+void wake_pheromone_note_reason(wake_pheromone_t *pt,
+                                const wake_entity_t *entity,
+                                uint64_t word);
 
 /*
  * Lookup current confidence for an entity.
