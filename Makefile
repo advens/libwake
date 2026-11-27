@@ -84,6 +84,7 @@ VENDOR_OBJS := $(BUILDDIR)/monocypher.o $(BUILDDIR)/monocypher-ed25519.o
 LIB_SRCS := $(SRCDIR)/wake_entity.c $(SRCDIR)/wake_pheromone.c \
             $(SRCDIR)/wake_tac.c \
             $(SRCDIR)/wake_crypto.c $(SRCDIR)/wake_signal.c \
+            $(SRCDIR)/wake_prevmsg.c \
             $(SRCDIR)/wake_quorum.c \
             $(SRCDIR)/wake_swim.c $(SRCDIR)/wake_plumtree.c \
             $(SRCDIR)/wake_dgram.c $(SRCDIR)/wake_version.c
@@ -96,6 +97,7 @@ HEADERS := $(SRCDIR)/wake_entity.h $(SRCDIR)/wake_pheromone.h \
            $(SRCDIR)/wake_tac.h \
            $(SRCDIR)/wake_crypto.h \
            $(SRCDIR)/wake_quorum.h $(SRCDIR)/wake_signal.h \
+           $(SRCDIR)/wake_prevmsg.h \
            $(SRCDIR)/wake_swim.h $(SRCDIR)/wake_plumtree.h \
            $(SRCDIR)/wake_dgram.h $(SRCDIR)/wake_version.h
 
@@ -141,7 +143,7 @@ $(BUILDDIR)/libwake.a: $(ALL_OBJS)
 	$(Q)$(AR) rcs $@ $(ALL_OBJS)
 
 # --- Test targets (unit tests built here: test_tac, test_swim, test_dgram,
-# test_crypto, test_entity, test_quorum) ---
+# test_crypto, test_entity, test_quorum, test_prevmsg) ---
 $(BUILDDIR)/test_tac: $(SRCDIR)/test_tac.c $(BUILDDIR)/libwake.a $(HEADERS) | $(BUILDDIR)
 	@echo "  CC    $< (test)"
 	$(Q)$(CC) $(CFLAGS) -o $@ $(SRCDIR)/test_tac.c $(BUILDDIR)/libwake.a $(LDFLAGS)
@@ -154,6 +156,15 @@ $(BUILDDIR)/test_dgram: $(SRCDIR)/test_dgram.c $(BUILDDIR)/libwake.a $(HEADERS) 
 test-dgram: $(BUILDDIR)/test_dgram
 	@echo "=== wake_dgram codec tests ==="
 	$(Q)$(BUILDDIR)/test_dgram
+
+$(BUILDDIR)/test_prevmsg: $(SRCDIR)/test_prevmsg.c $(BUILDDIR)/libwake.a $(HEADERS) | $(BUILDDIR)
+	@echo "  CC    $< (test)"
+	$(Q)$(CC) $(CFLAGS) -o $@ $(SRCDIR)/test_prevmsg.c $(BUILDDIR)/libwake.a $(LDFLAGS)
+
+.PHONY: test-prevmsg
+test-prevmsg: $(BUILDDIR)/test_prevmsg
+	@echo "=== wake_prevmsg encode / decode tests ==="
+	$(Q)$(BUILDDIR)/test_prevmsg
 
 $(BUILDDIR)/test_swim: $(SRCDIR)/test_swim.c $(BUILDDIR)/libwake.a $(HEADERS) | $(BUILDDIR)
 	@echo "  CC    $< (test)"
@@ -276,6 +287,10 @@ libfuzz-ci: | $(BUILDDIR)
 		$(SRCDIR)/fuzz_crypto.c $(SRCDIR)/wake_crypto.c \
 		$(VENDORDIR)/monocypher.c $(VENDORDIR)/monocypher-ed25519.c \
 		-o $(BUILDDIR)/fuzz_crypto $(LDFLAGS); \
+	$(FUZZ_CC) $(FUZZ_CFLAGS) -I$(VENDORDIR) \
+		$(SRCDIR)/fuzz_prevmsg.c $(SRCDIR)/wake_prevmsg.c $(SRCDIR)/wake_crypto.c \
+		$(VENDORDIR)/monocypher.c $(VENDORDIR)/monocypher-ed25519.c \
+		-o $(BUILDDIR)/fuzz_prevmsg $(LDFLAGS); \
 	ASAN_OPTIONS=$(FUZZ_ASAN) UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 		$(BUILDDIR)/fuzz_signal $(FUZZ_CI_FLAGS); \
 	ASAN_OPTIONS=$(FUZZ_ASAN) UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
@@ -290,7 +305,9 @@ libfuzz-ci: | $(BUILDDIR)
 		$(BUILDDIR)/fuzz_dgram $(FUZZ_CI_FLAGS); \
 	ASAN_OPTIONS=$(FUZZ_ASAN) UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 		$(BUILDDIR)/fuzz_crypto $(FUZZ_CI_FLAGS); \
-	echo "libwake libFuzzer CI: signal/swim/plumtree/pheromone/tac/dgram/crypto OK"
+	ASAN_OPTIONS=$(FUZZ_ASAN) UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+		$(BUILDDIR)/fuzz_prevmsg $(FUZZ_CI_FLAGS); \
+	echo "libwake libFuzzer CI: signal/swim/plumtree/pheromone/tac/dgram/crypto/prevmsg OK"
 
 # ASan+UBSan run of the invariant suite.
 .PHONY: san
@@ -311,6 +328,12 @@ san: | $(BUILDDIR)
 		$(VENDORDIR)/monocypher.c $(VENDORDIR)/monocypher-ed25519.c \
 		-o $(BUILDDIR)/test_crypto_san
 	$(Q)$(BUILDDIR)/test_crypto_san
+	@echo "=== wake_prevmsg ASan+UBSan ==="
+	$(Q)$(SAN_CC) $(SAN_WARN) -fsanitize=address,undefined -g -O1 \
+		-I$(SRCDIR) -I$(VENDORDIR) $(SRCDIR)/test_prevmsg.c $(SRCDIR)/wake_prevmsg.c \
+		$(SRCDIR)/wake_crypto.c $(VENDORDIR)/monocypher.c $(VENDORDIR)/monocypher-ed25519.c \
+		-o $(BUILDDIR)/test_prevmsg_san
+	$(Q)$(BUILDDIR)/test_prevmsg_san
 	@echo "=== wake_quorum ASan+UBSan ==="
 	$(Q)$(SAN_CC) $(SAN_WARN) -fsanitize=address,undefined -g -O1 \
 		-I$(SRCDIR) $(SRCDIR)/test_quorum.c $(SRCDIR)/wake_quorum.c \
@@ -318,7 +341,7 @@ san: | $(BUILDDIR)
 		-o $(BUILDDIR)/test_quorum_san
 	$(Q)$(BUILDDIR)/test_quorum_san
 
-test: $(BUILDDIR)/$(SOFILE) $(BUILDDIR)/libwake.a test-tac test-swim test-dgram test-crypto test-entity test-quorum test-reason
+test: $(BUILDDIR)/$(SOFILE) $(BUILDDIR)/libwake.a test-tac test-swim test-dgram test-prevmsg test-crypto test-entity test-quorum test-reason
 	@echo ""
 	@echo "=== libwake test: link check ==="
 	@echo "  Shared library: $(BUILDDIR)/$(SOFILE)"

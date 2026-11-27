@@ -23,6 +23,9 @@ host application's own socket, loop, and clock.
   coupling (short-lived correlation, not a general graph store).
 - **wake_signal**: a signed, fixed-size wire record for a mesh signal
   (entity, verdict, confidence, TTL), Ed25519-authenticated.
+- **wake_prevmsg**: a signed batch of up to ten prevalence rows (keyed
+  hash, count, sources) for one counting window, sized for one PlumTree
+  payload. The origin's public key is inside the signed bytes.
 - **wake_entity**: the 64-byte entity model shared by every module above
   (source/destination/discriminant, SipHash-keyed).
 - **wake_crypto**: SHA-512 and Ed25519 (RFC 8032) for signal
@@ -33,8 +36,8 @@ host application's own socket, loop, and clock.
 ## In, not in
 
 **In:** the primitives above, unit tests, libFuzzer targets for every
-untrusted-input surface (peer datagrams, signed signals, a crafted
-pheromone or TAC file), and ASan/UBSan/TSan runs.
+untrusted-input surface (peer datagrams, signed signals and prevalence
+batches, a crafted pheromone or TAC file), and ASan/UBSan/TSan runs.
 
 **Not in:** a network stack, a config format, cluster bootstrap/discovery
 beyond the seed list a caller supplies, and any single global correlator:
@@ -144,6 +147,7 @@ Wire and file formats are versioned independently of the library release:
 |---------|-----------|-------|
 | SWIM / PlumTree datagram | `WAKE_DGRAM_VERSION` = 1 | rejected on mismatch by `wake_dgram_decode()` |
 | mesh signal | `WAKE_SIGNAL_VERSION` = 1 | inside the signed 192-byte record |
+| prevalence batch | `WAKE_PREVMSG_VERSION` = 1 | inside the signed batch, 126 to 252 bytes |
 | pheromone table file | `WAKE_PHT_VERSION` = 1 | checked by `wake_pheromone_open()` |
 | TAC table file | `WAKE_TAC_VERSION` = 1 | checked by `wake_tac_open()` |
 
@@ -154,10 +158,10 @@ on a new platform means the ABI changed, not that the test is wrong.
 ## Security
 
 Every module that parses bytes from outside the process (a peer datagram,
-a signed signal, a pheromone or TAC table file opened from disk) has a
-libFuzzer target under `src/fuzz_*.c`, run under AddressSanitizer and
-UBSan. `wake_tac` and `wake_pheromone` additionally run under
-ThreadSanitizer (`make tsan`) since both are mmap-backed
+a signed signal or prevalence batch, a pheromone or TAC table file opened
+from disk) has a libFuzzer target under `src/fuzz_*.c`, run under
+AddressSanitizer and UBSan. `wake_tac` and `wake_pheromone` additionally
+run under ThreadSanitizer (`make tsan`) since both are mmap-backed
 structures shared across processes.
 
 Report a vulnerability privately to the maintainer rather than opening a
