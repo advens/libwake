@@ -19,10 +19,10 @@ extern "C" {
 #endif
 
 #define WAKE_VERSION_MAJOR 0
-#define WAKE_VERSION_MINOR 3
-#define WAKE_VERSION_PATCH 1
+#define WAKE_VERSION_MINOR 4
+#define WAKE_VERSION_PATCH 0
 
-#define WAKE_VERSION_STRING "0.3.1"
+#define WAKE_VERSION_STRING "0.4.0"
 
 /* Single comparable integer: (major << 16) | (minor << 8) | patch.
  * Use for #if WAKE_VERSION_NUM >= ... feature checks across releases. */
