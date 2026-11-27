@@ -13,8 +13,8 @@ DESTDIR  ?=
 # Keep in sync with src/wake_version.h's WAKE_VERSION_MAJOR/MINOR/PATCH:
 # no generation step ties them together, this comment is the enforcement.
 LIB_MAJOR := 0
-LIB_MINOR := 3
-LIB_PATCH := 1
+LIB_MINOR := 4
+LIB_PATCH := 0
 
 SONAME   := libwake.so.$(LIB_MAJOR)
 SOFILE   := libwake.so.$(LIB_MAJOR).$(LIB_MINOR).$(LIB_PATCH)

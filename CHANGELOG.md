@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
 ### Added
 
 - `wake_prevmsg`: a signed prevalence batch for PlumTree. Up to ten rows
@@ -24,6 +26,7 @@ First tagged release, packaged from the initial public tree plus a
 pkgconfig install-path fix (lib/pkgconfig instead of FreeBSD-only
 libdata/pkgconfig on non-FreeBSD platforms).
 
-[Unreleased]: https://github.com/advens/libwake/compare/0.3.1...HEAD
+[Unreleased]: https://github.com/advens/libwake/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/advens/libwake/releases/tag/0.4.0
 [0.3.1]: https://github.com/advens/libwake/releases/tag/0.3.1
 [0.3.0]: https://github.com/advens/libwake/releases/tag/0.3.0
